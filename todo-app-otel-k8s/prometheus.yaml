@@ -1,0 +1,77 @@
+# ConfigMapw
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus-config.yaml: |
+    #
+    # PASTE THE CONTENT of your ./prometheus/prometheus-config.yaml file here
+    #
+    global:
+      evaluation_interval: 30s
+      scrape_interval: 15s
+    scrape_configs:
+    - job_name: 'otel-collector'
+      static_configs:
+      - targets:
+        - 'otelcol-collector-monitoring:8888'
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: quay.io/prometheus/prometheus:v2.52.0
+          args:
+            - --web.console.templates=/etc/prometheus/consoles
+            - --web.console.libraries=/etc/prometheus/console_libraries
+            - --storage.tsdb.retention.time=1h
+            - --config.file=/etc/prometheus/prometheus-config.yaml
+            - --storage.tsdb.path=/prometheus
+            - --web.enable-lifecycle
+            - --web.route-prefix=/
+            - --enable-feature=exemplar-storage
+            - --enable-feature=otlp-write-receiver
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config-vol
+              mountPath: /etc/prometheus/prometheus-config.yaml
+              subPath: prometheus-config.yaml
+            - name: storage-volume
+              mountPath: /data
+              subPath: ""
+      volumes:
+        - name: prometheus-config-vol
+          configMap:
+            name: prometheus-config
+        - name: storage-volume
+          emptyDir: {}
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+spec:
+  type: NodePort
+  selector:
+    app: prometheus
+  ports:
+    - protocol: TCP
+      port: 9090
+      targetPort: 9090
+      nodePort: 30094

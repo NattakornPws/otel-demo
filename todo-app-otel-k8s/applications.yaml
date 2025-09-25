@@ -1,0 +1,228 @@
+# Backend Spring Boot Application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todobackend-springboot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todobackend-springboot
+  template:
+    metadata:
+      labels:
+        app: todobackend-springboot
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "true"
+    spec:
+      containers:
+        - name: todobackend-springboot
+          image: nattakornpws/todobackend-springboot:1.0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+                #- name: OTEL_EXPORTER_OTLP_ENDPOINT
+                #value: "http://otelcol:4317" # Points to the OTel Collector Service
+                #- name: OTEL_EXPORTER_OTLP_TRACES_PROTOCOL
+                #value: "grpc"
+                #- name: OTEL_EXPORTER_OTLP_METRICS_PROTOCOL
+                #value: "grpc"
+                #- name: OTEL_RESOURCE_ATTRIBUTES
+                #value: "service.name=todobackend-springboot"
+                #- name: OTEL_METRICS_EXPORTER
+                #value: "otlp,logging-otlp"
+                #- name: OTEL_LOGS_EXPORTER
+                #value: "none"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todobackend-springboot
+spec:
+  selector:
+    app: todobackend-springboot
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+---
+# Frontend UI - Thymeleaf
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todoui-thymeleaf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todoui-thymeleaf
+  template:
+    metadata:
+      labels:
+        app: todoui-thymeleaf
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "true"
+    spec:
+      containers:
+        - name: todoui-thymeleaf
+          image: nattakornpws/todoui-thymeleaf:1.0 
+          ports:
+            - containerPort: 8090
+          env:
+            - name: BACKEND_URL
+              value: "http://todobackend-springboot:8080/"
+                #- name: OTEL_EXPORTER_OTLP_ENDPOINT
+                #value: "http://otelcol:4317"
+                #- name: OTEL_EXPORTER_OTLP_TRACES_PROTOCOL
+                # value: "grpc"
+                #- name: OTEL_EXPORTER_OTLP_METRICS_PROTOCOL
+                #value: "grpc"
+                #- name: OTEL_RESOURCE_ATTRIBUTES
+                # value: "service.name=todoui-thymeleaf"
+                #- name: OTEL_METRICS_EXPORTER
+                #value: "otlp,logging-otlp"
+                #- name: OTEL_LOGS_EXPORTER
+                #value: "none"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todoui-thymeleaf
+spec:
+  type: NodePort # Exposes the service on each Node's IP at a static port
+  selector:
+    app: todoui-thymeleaf
+  ports:
+    - protocol: TCP
+      port: 8090
+      targetPort: 8090
+      nodePort: 30090 # Static port for external access
+
+---
+# Frontend UI - Flask
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todoui-flask
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todoui-flask
+  template:
+    metadata:
+      labels:
+        app: todoui-flask
+      annotations:
+        instrumentation.opentelemetry.io/inject-python: "true"
+          #    instrumentation.opentelemetry.io/otel-python-platform: "glibc"
+          #instrumentation.opentelemetry.io/otel-python-platform: "musl"
+    spec:
+      containers:
+        - name: todoui-flask
+          image: nattakornpws/todoui-flask:1.0
+          ports:
+            - containerPort: 5000
+          env:
+            - name: BACKEND_URL
+              value: "http://todobackend-springboot:8080/todos/"
+                #- name: OTEL_EXPORTER_OTLP_ENDPOINT
+                #value: "http://otelcol:4317"
+                #- name: OTEL_RESOURCE_ATTRIBUTES
+                #value: "service.name=todoui-flask"
+                #- name: OTEL_METRICS_EXPORTER
+                #value: "otlp"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todoui-flask
+spec:
+  type: NodePort
+  selector:
+    app: todoui-flask
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+      nodePort: 30091 # Static port for external access
+
+---
+# Load Generator
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgenerator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgenerator
+  template:
+    metadata:
+      labels:
+        app: loadgenerator
+    spec:
+      containers:
+      - name: loadgenerator
+        image: nattakornpws/loadgenerator:1.0
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-secret
+  labels:
+    app: postgres
+data:
+  POSTGRES_DB: "mydb"
+  POSTGRES_USER: "admin"
+  POSTGRES_PASSWORD: "admin"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresdb
+  template:
+    metadata:
+      labels:
+        app: postgresdb
+    spec:
+      containers:
+        - name: postgresdb
+          image: postgres:16.3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: postgres-secret
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgresdata
+      volumes:
+        - name: postgresdata
+          emptyDir: {}
+          # persistentVolumeClaim:
+          # claimName: postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresdb
+  labels:
+    app: postgresdb
+spec:
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: postgresdb
