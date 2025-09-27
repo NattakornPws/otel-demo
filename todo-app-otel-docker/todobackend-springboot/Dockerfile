@@ -18,6 +18,8 @@ COPY --from=build ${DEPENDENCY}/BOOT-INF/lib /opt/todobackend/app/lib
 COPY --from=build ${DEPENDENCY}/META-INF /opt/todobackend/app/META-INF
 COPY --from=build ${DEPENDENCY}/BOOT-INF/classes /opt/todobackend/app
 
+#Download the OpenTelemetry JAVA agent package
 ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.8.0/opentelemetry-javaagent.jar /opt/todobackend
 
+#Add OpenTelemetry JAVA agent package as javaagent parameter when running the application
 ENTRYPOINT ["java", "-cp", "/opt/todobackend/app:/opt/todobackend/app/lib/*",  "-javaagent:/opt/todobackend/opentelemetry-javaagent.jar","io.novatec.todobackend.TodobackendApplication"]
